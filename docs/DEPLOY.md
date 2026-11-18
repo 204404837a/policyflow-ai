@@ -7,7 +7,7 @@ Grounded in [HLD.md §8](./HLD.md) topology. All config via env ([.env.example](
 
 ## Run the applications outside containers
 
-Generate the demo dataset and create `.env` in the repository root as described in the [quick start](../README.md#快速启动). Start the infrastructure from the root.
+Generate the demo dataset and create `.env` in the repository root as described in [本地启动](#本地启动). Start the infrastructure from the root.
 
 ```bash
 docker compose up -d postgres qdrant minio redis litellm
@@ -22,17 +22,29 @@ uv run uvicorn app.main:app --reload
 
 In a second shell from `backend/`, run `uv run celery -A app.worker.celery_app worker -l info`. In a third shell from `frontend/`, run `npm ci` and `npm run dev`.
 
-## Containerized (full stack)
+## 本地启动
 
-Generate the demo dataset before starting the stack.
+准备 Python 3.11 或更新版本和 Docker Compose。在仓库根目录运行以下 PowerShell 命令来生成演示材料和两份样例保单。
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install fpdf2 numpy Pillow
+.\.venv\Scripts\python.exe -m scripts.generate_docs
+.\.venv\Scripts\python.exe -m scripts.generate_gold_policy
+.\.venv\Scripts\python.exe -m scripts.generate_silver_policy
+.\.venv\Scripts\python.exe -m scripts.generate_unknown
+Copy-Item .env.example .env
+```
+
+macOS 和 Linux 使用 `.venv/bin/python` 和 `cp`。在 `.env` 中填写 `GROQ_API_KEY` 与 `HUGGINGFACE_API_KEY` 后启动服务。
 
 ```bash
-cp .env.example .env      # fill GROQ_API_KEY and HUGGINGFACE_API_KEY
 docker compose up -d --build
 docker compose exec api alembic upgrade head
 docker compose exec api python -m app.db.seed
 ```
-`seed` idempotently creates the **bootstrap admin** (`ADMIN_USERNAME`/`ADMIN_PASSWORD`, dev default `admin`/`admin`) — log in at `/login`, then create reviewer/employer users from the Admin console. The `api`+`worker` containers bind-mount `./dataset:/dataset:ro` so the live eval can read `metadata.json` and the doc images (see [EVAL_PLAN.md](./EVAL_PLAN.md)).
+
+管理页默认为 `http://localhost:3000`，接口文档为 `http://localhost:8000/docs`。用 `ADMIN_USERNAME` 和 `ADMIN_PASSWORD` 登录，本地默认均为 `admin`。在管理页建立审核员和提交者账号，上传 `dataset/policies/` 中的 PDF 并绑定 `GOLD` 和 `SILVER` 后，即可演示条款检索和理赔材料上传。
 
 ## Reset ingested claims to a fresh state
 Clears submitted-claim data (`cases`, `documents`, `agent_outputs`, `llm_calls`, `audit_events`, their MinIO files, and per-case LangGraph checkpoints) while **keeping** seeded members/claim_history, users (incl. the bootstrap admin), and the Qdrant policy vectors — i.e. the state right after a fresh build, before any claim was submitted.
