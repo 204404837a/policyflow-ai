@@ -1,0 +1,108 @@
+name: policyflow
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-policyflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-policyflow}
+      POSTGRES_DB: ${POSTGRES_DB:-policyflow}
+    ports: ["${POSTGRES_PORT:-5432}:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports: ["${REDIS_PORT:-16379}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports: ["${QDRANT_PORT:-16333}:6333"]
+    volumes: ["qdrant_storage:/qdrant/storage"]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports: ["${MINIO_PORT:-19000}:9000", "${MINIO_CONSOLE_PORT:-19001}:9001"]
+    volumes: ["minio_data:/data"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    ports: ["${LITELLM_PORT:-4000}:4000"]
+    volumes: ["./litellm-config.yaml:/app/config.yaml:ro"]
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      REDIS_URL: ${REDIS_URL}
+    depends_on: [redis]
+
+  api:
+    build: { context: ./backend }
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    env_file: [.env]
+    environment:
+      DATASET_DIR: /dataset
+      EVAL_CAPTURE_PATH: /eval_out/predictions.json
+    volumes:
+      - "eval_out:/eval_out"
+      - "./dataset:/dataset:ro"  # metadata.json + docs for live eval scoring
+    ports: ["${API_PORT:-8000}:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+
+  worker:
+    build: { context: ./backend }
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "-l", "info"]
+    env_file: [.env]
+    environment:
+      DATASET_DIR: /dataset
+      EVAL_CAPTURE_PATH: /eval_out/predictions.json
+      # Pace LLM calls process-wide so batch eval stays under the free-tier
+      # tokens/min limit. Image-heavy `vision` calls are ~thousands of tokens
+      # each, so 30s (~2 calls/min) keeps a single call under a ~6k TPM ceiling.
+      # A full 155-doc run is slow at this rate — sample a few cases from the
+      # dashboard. Drop back toward 12 on a paid Groq tier. Retry-After from the
+      # gateway is now honored automatically (see llm/client.py).
+      LLM_MIN_INTERVAL_S: "30"
+      EVAL_CASE_DELAY_S: "0"
+    volumes:
+      - "eval_out:/eval_out"
+      - "./dataset:/dataset:ro"  # worker drives the graph over these docs
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  frontend:
+    build: { context: ./frontend }
+    command: ["npm", "run", "dev"]
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:8000
+    ports: ["${WEB_PORT:-3000}:3000"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  qdrant_storage:
+  minio_data:
+  eval_out:

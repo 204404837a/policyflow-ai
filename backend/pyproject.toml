@@ -1,0 +1,82 @@
+[project]
+name = "policyflow-backend"
+version = "0.1.0"
+description = "PolicyFlow AI — multi-agent document-intake backend"
+requires-python = ">=3.11"
+dependencies = [
+    # web / async
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "gunicorn>=22",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    # config / validation
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    # data tier
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "redis>=5.0",
+    "minio>=7.2",
+    "qdrant-client>=1.9",
+    # workers
+    "celery[redis]>=5.4",
+    # llm / agents (installed at Phase 2 via `uv sync`)
+    "litellm>=1.44",
+    "langgraph>=0.2",
+    "langgraph-checkpoint-postgres>=1.0",
+    "docling>=2.0",
+    # utils
+    "tenacity>=8.4",
+    "filetype>=1.2",
+    "python-json-logger>=2.0",
+    "pillow>=10.3",
+    "fpdf2>=2.7",
+    # auth (Phase 9 — RBAC)
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt<4.1",
+    "python-jose[cryptography]>=3.3",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "types-redis",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["app"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]
+ignore = ["S101"]  # allow assert in tests
+
+[tool.ruff.lint.per-file-ignores]
+"app/core/config.py" = ["S105"]  # dev-default credentials; real values come from env
+"app/db/seed.py" = ["S311"]      # synthetic seed data — not a cryptographic context
+"app/api/**" = ["B008"]          # Depends()/File() in defaults is the FastAPI idiom
+"tests/**" = ["S101", "S105", "S106"]  # asserts + dummy creds in tests
+
+[tool.mypy]
+python_version = "3.11"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

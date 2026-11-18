@@ -1,0 +1,69 @@
+# ---- Secrets / env ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+**/secrets/**
+
+# ---- Generated dataset (large binaries + ground-truth images) ----
+dataset/
+dataset_summary.md
+!docs/scripts_overview.txt
+
+# ---- Data volumes ----
+qdrant_storage/
+minio_data/
+pgdata/
+*.sqlite
+*.db
+
+# ---- Model weights / caches ----
+*.gguf
+*.safetensors
+.cache/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# ---- Eval / run outputs ----
+eval_output/
+reports/
+*.log
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.uv/
+*.egg-info/
+
+# ---- Node / Next.js ----
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# ---- IDE / OS ----
+.DS_Store
+.idea/
+.vscode/
+PROJECT_SCAFFOLD_PROMPT.md
+CLAUDE.md
+screenshots/
+docs/assignment_02_multimodal_ai.md
+docs/CODING_STANDARDS.md
+docs/DATA_DICTIONARY.md
+docs/DATA_HANDLING.md
+docs/EXTENSIONS.md
+docs/INSTRUCTIONS.md
+docs/GOLDEN_SET.md
+docs/task.md
+.claude/
+.agents/
+discussions/
+.claudeignore
+REPO_MANIFEST.md

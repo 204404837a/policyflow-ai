@@ -1,0 +1,51 @@
+# LiteLLM proxy config — app code references only the logical aliases below
+# (vision / reasoning / embeddings), never a provider or model id.
+model_list:
+  - model_name: vision
+    # Groq removed the Llama-4 Scout/Maverick vision models; qwen3.6-27b is the
+    # multimodal model currently available on the account (returns clean JSON
+    # under response_format=json_object). Swapped here behind the `vision` alias
+    # so no app code changes (the point of the provider-agnostic seam).
+    litellm_params:
+      model: groq/qwen/qwen3.6-27b
+      api_key: os.environ/GROQ_API_KEY
+      # qwen3.6 is a reasoning model; without this it burns the whole completion
+      # budget "thinking" and truncates the JSON ("max completion tokens reached
+      # before generating a valid document"). Disabling reasoning sends the
+      # budget straight to the structured output (and cuts token usage — helps
+      # the free-tier 8000 TPM limit). Passed via extra_body because LiteLLM's
+      # Groq schema won't forward `reasoning_effort` for this model directly.
+      extra_body:
+        reasoning_effort: none
+  - model_name: reasoning
+    litellm_params:
+      model: groq/llama-3.3-70b-versatile
+      api_key: os.environ/GROQ_API_KEY
+  - model_name: embeddings
+    litellm_params:
+      model: huggingface/BAAI/bge-large-en-v1.5
+      api_key: os.environ/HUGGINGFACE_API_KEY
+      # HF's default routing rejects bge-large ("not supported by provider
+      # hf-inference"); the feature-extraction pipeline endpoint on the router
+      # serves it (dim 1024). Point LiteLLM straight at it.
+      api_base: https://router.huggingface.co/hf-inference/models/BAAI/bge-large-en-v1.5/pipeline/feature-extraction
+
+router_settings:
+  num_retries: 3
+  timeout: 90
+  fallbacks:
+    - vision: ["reasoning"]
+
+litellm_settings:
+  cache: true
+  cache_params:
+    type: redis
+  # LangSmith tracing (bonus). PII-safe: message content is redacted before any
+  # callback fires, so only token/latency/model metadata leaves the box — never
+  # prompt text or ID images (see .claude/rules/data-handling.md). Activates only
+  # when LANGSMITH_API_KEY is set in the env; otherwise the callback no-ops.
+  success_callback: ["langsmith"]
+  turn_off_message_logging: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
